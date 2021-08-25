@@ -1,0 +1,175 @@
+import SwiftyJSON
+import Foundation
+
+//let path = "/Users/zhengyitang/SwiftProjects/Exer/readJson.playground/Resources/CN_mayuri_main.json"
+
+struct readJson {
+    //input: path
+    /*
+     output: Dictionary that contains
+        - index
+        - question list
+        - answer list
+    */
+    
+    var path: String
+    
+    //read json and write to varialbe json & return json
+    func JSON() -> JSON {
+        let url = URL(fileURLWithPath: path)
+        let data = try! Data(contentsOf: url)
+        let json = try! SwiftyJSON.JSON(data: data)
+        return json
+    }
+    
+    func statusReport() -> String {
+        let countJson = JSON()["conversations"].count
+        return ("一共有\(countJson)组问答")
+    }
+    
+    func questionIndex() -> [[String]] {
+        var Question_match = [[String]]()
+        var Question_index : [Int] = []
+        for i in 0..<JSON()["conversations"].count {
+//            print("第", i, "组问答里有: ", JSON()["conversations"][i][0].count, "个问题")
+            Question_index += Array(repeating: i, count: JSON()["conversations"][i][0].count)
+        }
+        //print(Question_index)
+
+        //把index加入question match array
+        Question_match.append(Question_index.map(String.init)) //需要转变成string
+        print("写入index完毕")
+        return Question_match //Question_match[0] = question_index
+    }
+    
+    func questionMatch() -> [[String]] {
+        var Question_list: [String] = []
+        var Question_match = questionIndex()
+        //读取JSON里的问题，并存入Question_list
+        for (_,QA) in JSON()["conversations"] {
+            for (index, text) in QA {
+        //        print("index: ", index)
+        //        print("text: ", text)
+                if index == "0" {
+        //            print("text in if: ", text)
+                    for (_, ii) in text {
+                        Question_list.append(ii.stringValue)
+                    }
+                }
+            }
+        }
+        //print(Question_list)
+        Question_match.append(Question_list)
+        print("写入问题完毕")
+        if Question_list.count == Question_match[0].count {
+            print("前期准备完毕")
+        } else {
+            print("准备阶段有错误发生")
+            print("question list: \(Question_list.count), question index: \(Question_match[0].count)")
+        }
+        return Question_match
+    }
+    
+//    func jsonPreparation() -> [String]{
+//        var Question_match = [[String]]()
+//        var Question_list: [String] = []
+//        var Question_index : [Int] = []
+////        //获得index array
+//        for i in 0..<JSON()["conversations"].count {
+//            print("第", i, "组问答里有: ", JSON()["conversations"][i][0].count, "个问题")
+//            Question_index += Array(repeating: i, count: JSON()["conversations"][i][0].count)
+//        }
+//        //print(Question_index)
+//
+//        //把index加入question match array
+//        Question_match.append(Question_index.map(String.init)) //需要转变成string
+//        print("写入index完毕")
+//
+//        //读取JSON里的问题，并存入Question_list
+//        for (_,QA) in JSON()["conversations"] {
+//            for (index, text) in QA {
+//        //        print("index: ", index)
+//        //        print("text: ", text)
+//                if index == "0" {
+//        //            print("text in if: ", text)
+//                    for (_, ii) in text {
+//                        Question_list.append(ii.stringValue)
+//                    }
+//                }
+//            }
+//        }
+//        //print(Question_list)
+//
+//        Question_match.append(Question_list)
+//        print("写入问题完毕")
+//
+//        if Question_list.count == Question_index.count {
+//            print("前期准备完毕")
+//        } else {
+//            print("准备阶段有错误发生")
+//            print("question list: \(Question_list.count), question index: \(Question_index.count)")
+//        }
+//        return Question_list
+//    }
+}
+
+//let json1 = readJson(path: path)
+//let text1 = json1.JSON()["conversations"][0][0][0]
+//print(json1.questionIndex()[0])
+//print(json1.questionMatch()[1][0]) //[0]: index, [1]: question list
+
+import Fuse
+
+struct ConversationLogic {
+    let threshold: Double
+    let inputText: String
+//    let json = readJson(path: path)
+    let json: readJson
+    
+    func fuzzyMatchingScore() -> [[String]] { //这里可以return questionMatch datatyp是 [[String]]
+        var questionMatch = json.questionMatch()
+        var Question_score: [String] = []
+        let fuse = Fuse()
+        for i in questionMatch[1] {
+            let distance = fuse.search(inputText, in: i)
+        //    print(distance?.score ?? 999, i)
+            let score : String = (distance?.score ?? 999).description
+            Question_score.append(score)
+//                    print(i)
+//                    print(score)
+        }
+        print("fuzzy matching完毕")
+       questionMatch.append(Question_score)
+        return questionMatch
+    }
+    
+    func giveFuzzyResponse() -> [String] {
+        let questionMatchFuzzy = fuzzyMatchingScore()
+        let Question_score = questionMatchFuzzy[2]
+        let min_score = Question_score.map{ Double ($0)!}.min()
+        print("min score: ", min_score!)
+        var fuzzyAnswer : [String] = []
+        if min_score! < threshold {
+            let find_score_index = questionMatchFuzzy[2].firstIndex(of: String(min_score!))
+            let find_q_index = questionMatchFuzzy[0][find_score_index!]
+            print("Best match question: ", questionMatchFuzzy[1][find_score_index!])
+            print("Question index in corpus: ", find_q_index)
+            //此问题的全部回答
+            print("此问题的全部回答")
+            print(json.JSON()["conversations"][Int(find_q_index) ?? 0][1])
+
+            //随机选出回答
+            let (_, answers) = json.JSON()["conversations"][Int(find_q_index) ?? 0][1].randomElement()!
+            //print("回答: ", index, answer)
+            //如果是多条对话，就逐条写入array，在前端解析
+            for (_, answer) in answers {
+                fuzzyAnswer.append(answer.stringValue)
+            }
+        }
+        else {print("没有这条对话")}
+        return fuzzyAnswer
+    }
+}
+
+let question = ConversationLogic(threshold: 0.4, inputText: "今天吃饭了吗", json: readJson(path: "/Users/zhengyitang/SwiftProjects/Exer/readJson.playground/Resources/CN_mayuri_main.json"))
+print(question.giveFuzzyResponse())
